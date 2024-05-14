@@ -3,7 +3,7 @@
 #include <libs/common/print.h>
 #include <libs/user/syscall.h>
 
-// タスクで使われていない仮想アドレス領域を返す。仮想アドレスは割り当てっぱなしで解放はできない。
+//返回任务未使用的虚拟地址空间。虚拟地址仍保持分配状态且无法释放。
 static uaddr_t valloc(struct task *task, size_t size) {
     if (task->valloc_next >= VALLOC_END) {
         return 0;
@@ -14,7 +14,7 @@ static uaddr_t valloc(struct task *task, size_t size) {
     return uaddr;
 }
 
-// 物理アドレスをタスクのページテーブルにマップする。uaddrには割り当てた仮想アドレスが返る。
+//将物理地址映射到任务的页表。分配的虚拟地址返回到uaddr。
 error_t map_pages(struct task *task, size_t size, int map_flags, paddr_t paddr,
                   uaddr_t *uaddr) {
     DEBUG_ASSERT(IS_ALIGNED(size, PAGE_SIZE));
@@ -23,7 +23,7 @@ error_t map_pages(struct task *task, size_t size, int map_flags, paddr_t paddr,
         return ERR_NO_RESOURCES;
     }
 
-    // 各ページをマップする。
+    //映射每个页面。
     for (offset_t offset = 0; offset < size; offset += PAGE_SIZE) {
         error_t err =
             sys_vm_map(task->tid, *uaddr + offset, paddr + offset, map_flags);
@@ -36,7 +36,7 @@ error_t map_pages(struct task *task, size_t size, int map_flags, paddr_t paddr,
     return OK;
 }
 
-// 物理ページを割り当てて、タスクのページテーブルにマップする。uaddrには割り当てた仮想アドレスが返る。
+//分配物理页并将它们映射到任务的页表。分配的虚拟地址返回到uaddr。
 error_t alloc_pages(struct task *task, size_t size, int alloc_flags,
                     int map_flags, paddr_t *paddr, uaddr_t *uaddr) {
     pfn_t pfn = sys_pm_alloc(task->tid, size,

@@ -7,24 +7,23 @@
 #include <libs/user/syscall.h>
 #include <libs/user/virtio/virtio_mmio.h>
 
-static struct virtio_mmio device;      // virtioデバイスの管理構造体
-static struct virtio_virtq *requestq;  // 読み書き処理要求用virtqueue
-static dmabuf_t dmabuf;                // 読み書き処理要求用virtqueueで使われるバッファ
-
-// ディスクの読み書き
+static struct virtio_mmio device;       // virtio设备管理结构
+static struct virtio_virtq *requestq;   // 用于读/写处理请求的virtqueue
+static dmabuf_t dmabuf;                 // virtqueue 用于读/写请求的缓冲区
+// 读写磁盘
 static error_t read_write(task_t task, uint64_t sector, void *buf, size_t len,
                           bool is_write) {
-    // 読み込むバイト数はセクタサイズにアラインされている必要がある
+    // 读取的字节数必须与扇区大小对齐
     if (!IS_ALIGNED(len, SECTOR_SIZE)) {
         return ERR_INVALID_ARG;
     }
 
-    // 大きすぎてもダメ
+    // 不太大
     if (len > REQUEST_BUFFER_SIZE) {
         return ERR_TOO_LARGE;
     }
 
-    // 処理要求用のバッファを割り当てる
+    // 分配一个缓冲区来处理请求
     struct virtio_blk_req *req;
     paddr_t paddr;
     if ((req = dmabuf_alloc(dmabuf, &paddr)) == NULL) {
@@ -32,7 +31,7 @@ static error_t read_write(task_t task, uint64_t sector, void *buf, size_t len,
         return ERR_TRY_AGAIN;
     }
 
-    // 処理要求を埋める
+    // 填写处理请求
     req->type = is_write ? VIRTIO_BLK_T_OUT : VIRTIO_BLK_T_IN;
     req->reserved = 0;
     req->sector = sector;
@@ -40,34 +39,34 @@ static error_t read_write(task_t task, uint64_t sector, void *buf, size_t len,
         memcpy(req->data, buf, len);
     }
 
-    // ディスクリプタチェーン[0]: type, reserved, sector (デバイスからは読み込み専用)
+    // 描述符链[0]：类型、保留、扇区（从设备只读）
     struct virtio_chain_entry chain[3];
     chain[0].addr = paddr;
     chain[0].len = sizeof(uint32_t) * 2 + sizeof(uint64_t);
     chain[0].device_writable = false;
-    // ディスクリプタチェーン[1]: 書き込み元/読み込み先バッファ
+    // 描述符链[1]：写入源/读取目标缓冲区
     chain[1].addr = paddr + offsetof(struct virtio_blk_req, data);
     chain[1].len = len;
     chain[1].device_writable = !is_write;
-    // ディスクリプタチェーン[2]: 処理結果用メモリ領域。デバイスが書き込む。
+    // 描述符链[2]：处理结果的内存区域。设备写入。
     chain[2].addr = paddr + offsetof(struct virtio_blk_req, status);
     chain[2].len = sizeof(uint8_t);
     chain[2].device_writable = true;
 
-    // virtqueueにディスクリプタチェーンを追加
+    // 将描述符链添加到 Virtqueue
     int index_or_err = virtq_push(requestq, chain, 3);
     if (IS_ERROR(index_or_err)) {
         return index_or_err;
     }
 
-    // virtio-blkに通知
+    // 通知 Virtio blk
     virtq_notify(&device, requestq);
 
-    // 処理を終えるまでビジーウェイトする
+    // 忙等待处理完成
     while (virtq_is_empty(requestq))
         ;
 
-    // virtqueueから処理が終わったディスクリプタチェーンを取り出す
+    // 从 Virtqueue 中提取处理后的描述符链
     size_t total_len;
     int n = virtq_pop(requestq, chain, 3, &total_len);
     if (IS_ERROR(n)) {
@@ -76,14 +75,14 @@ static error_t read_write(task_t task, uint64_t sector, void *buf, size_t len,
         return ERR_UNEXPECTED;
     }
 
-    // ディスクリプタチェーンの内容を確認する。ここで送ったディスクリプタチェーンに対する
-    // 応答が返ってきているはず。
+    // 检查描述符链的内容。用于此处发送的描述符链。
+    // 您应该已收到回复。
     ASSERT(n == 3);
     ASSERT(chain[0].desc_index == index_or_err);
     ASSERT(chain[1].len == len);
     ASSERT(req->status == VIRTIO_BLK_S_OK);
 
-    // 読み込み処理の場合は読み込んだデータをメモリバッファにコピーする
+    // 进行读处理，将读到的数据复制到内存缓冲区
     if (!is_write) {
         memcpy(buf, req->data, len);
     }
@@ -92,34 +91,34 @@ static error_t read_write(task_t task, uint64_t sector, void *buf, size_t len,
     return OK;
 }
 
-// virtio-blkデバイスを初期化する
+// 初始化 Virtio blk 设备
 static void init_device(void) {
-    // virtioデバイスを初期化する
+    // 初始化 Virtio 设备
     ASSERT_OK(virtio_init(&device, VIRTIO_BLK_PADDR, 1));
 
-    // デバイスの機能を有効化する。特に必要な機能はないので、デバイスが提案した機能をそのまま
-    // 有効化する。
+    // 启用设备功能。没有特别需要的功能，只需使用设备建议的功能即可。
+    // 启用。
     uint64_t features = virtio_read_device_features(&device);
     ASSERT_OK(virtio_negotiate_feature(&device, features));
 
-    // デバイスを有効化する。
+    // 激活设备。
     ASSERT_OK(virtio_enable(&device));
 
-    // virtqueueへのポインタを取得する。
+    // 获取 Virtqueue 的指针。
     requestq = virtq_get(&device, 0);
 
-    // 割り込みは使わないので無効化しておく。代わりにビジーウェイトで処理の完了を待つ。
+    // 不使用中断，因此禁用它们。相反，它使用忙等待来等待进程完成。
     requestq->avail->flags |= VIRTQ_AVAIL_F_NO_INTERRUPT;
 
-    // 処理要求用のDMAバッファを作成する。
+    // 创建 DMA 缓冲区来处理请求。
     dmabuf = dmabuf_create(sizeof(struct virtio_blk_req), NUM_REQUEST_BUFFERS);
 }
 
 void main(void) {
-    // virtio-blkデバイスを初期化する
+    // 初始化 Virtio blk 设备
     init_device();
 
-    // ブロックデバイスとして登録する
+    // 注册为块设备
     ASSERT_OK(ipc_register("blk_device"));
     TRACE("ready");
 

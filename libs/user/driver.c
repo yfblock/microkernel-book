@@ -1,11 +1,11 @@
-// デバイスドライバAPI。基本的にはVMサーバに対するメッセージパッシングのラッパー。
+//设备驱动程序 API。基本上是虚拟机服务器的消息传递包装器。
 #include <libs/user/driver.h>
 #include <libs/user/ipc.h>
 
-// 指定された物理メモリ領域を空いている仮想アドレス領域にマップする。MMIO領域にアクセスしたい
-// 時に使える。
+//将指定的物理内存区域映射到空闲的虚拟地址区域。我想访问MMIO区域
+//有时可以使用。
 //
-// 引数 map_flags にはメモリ領域の権限 PAGE_(READABLE|WRITABLE|EXECUTABLE) を指定する。
+//在参数map_flags中指定内存区域权限PAGE_(READABLE|WRITABLE|EXECUTABLE)。
 error_t driver_map_pages(paddr_t paddr, size_t size, int map_flags,
                          uaddr_t *uaddr) {
     struct message m;
@@ -22,9 +22,9 @@ error_t driver_map_pages(paddr_t paddr, size_t size, int map_flags,
     return OK;
 }
 
-// 物理メモリ領域を確保する。
+//分配物理内存区域。
 //
-// 引数 map_flags にはメモリ領域の権限 PAGE_(READABLE|WRITABLE|EXECUTABLE) を指定する。
+//在参数map_flags中指定内存区域权限PAGE_(READABLE|WRITABLE|EXECUTABLE)。
 error_t driver_alloc_pages(size_t size, int map_flags, uaddr_t *uaddr,
                            paddr_t *paddr) {
     struct message m;

@@ -9,17 +9,17 @@
 #include <libs/user/syscall.h>
 #include <libs/user/task.h>
 
-// BootFSにあるサーバのうちBOOT_SERVERSで指定されているものを自動起動する。
+//自动启动Boot fs 中的服务器中的boot server 中指定的服务器。
 static void spawn_servers(void) {
     int num_launched = 0;
     struct bootfs_file *file;
     for (int i = 0; (file = bootfs_open_iter(i)) != NULL; i++) {
-        // 自動起動するサーバ名のリスト。空白で区切られている。
+        //要自动启动的服务器名称列表。用空格分隔。
         char *startups = BOOT_SERVERS;
 
-        // BOOT_STARTSの各サーバ名と比較する。
+        //与Boot 启动中的每个服务器名称进行比较。
         while (*startups != '\0') {
-            // ファイル名とサーバ名が一致すれば起動する。
+            //如果文件名和服务器名称匹配，它将启动。
             size_t len = strlen(file->name);
             if (!strncmp(file->name, startups, len)
                 && (startups[len] == '\0' || startups[len] == ' ')) {
@@ -28,12 +28,12 @@ static void spawn_servers(void) {
                 break;
             }
 
-            // 一致しなかった。次のサーバ名へ進める。
+            //它不匹配。继续处理下一个服务器名称。
             while (*startups != '\0' && *startups != ' ') {
                 startups++;
             }
 
-            // スペースはスキップする。
+            //跳过空格。
             while (*startups == ' ') {
                 startups++;
             }
@@ -49,8 +49,8 @@ void main(void) {
     bootfs_init();
     spawn_servers();
 
-    // service_dump() を後で呼び出すためのタイマーを設定する。
-    // 5秒あれば全てのサーバが起動するはず。
+    //设置一个计时器以供稍后调用 service_dump()。
+//所有服务器应在 5 秒内启动。
     sys_time(5000);
 
     TRACE("ready");

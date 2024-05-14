@@ -8,12 +8,12 @@
 #include "task.h"
 #include <libs/common/string.h>
 
-// ユーザー空間からのメモリコピー。通常のmemcpyと異なり、コピー中にページフォルトが発生した場合
-// には、カーネルランドではなくユーザータスクで発生したページフォルトとして処理する。
+//从用户空间进行内存复制。与普通memcpy不同的是，如果复制过程中出现页面错误
+//在这种情况下，将页面错误视为发生在用户任务中而不是发生在内核区域中。
 error_t memcpy_from_user(void *dst, __user const void *src, size_t len) {
     if (!arch_is_mappable_uaddr((uaddr_t) src)) {
-        // カーネルモードでは全ての仮想アドレスにアクセスできる権限があるので、渡されたポインタが
-        // 確かにユーザー空間のアドレスを指していることを確認する。
+        //在内核模式下，您有权限访问所有虚拟地址，因此传递的指针
+//验证您确实指向用户空间地址。
         return ERR_INVALID_UADDR;
     }
 
@@ -21,12 +21,12 @@ error_t memcpy_from_user(void *dst, __user const void *src, size_t len) {
     return OK;
 }
 
-// ユーザー空間へのメモリコピー。通常のmemcpyと異なり、コピー中にページフォルトが発生した場合
-// には、カーネルではなく実行中タスクで発生したページフォルトとして処理する。
+//内存复制到用户空间。与普通memcpy不同的是，如果复制过程中出现页面错误
+//在这种情况下，页面错误被视为发生在正在运行的任务中而不是内核中的页面错误。
 error_t memcpy_to_user(__user void *dst, const void *src, size_t len) {
     if (!arch_is_mappable_uaddr((uaddr_t) dst)) {
-        // カーネルモードでは全ての仮想アドレスにアクセスできる権限があるので、渡されたポインタが
-        // 確かにユーザー空間のアドレスを指していることを確認する。
+        //在内核模式下，您有权限访问所有虚拟地址，因此传递的指针
+//验证您确实指向用户空间地址。
         return ERR_INVALID_UADDR;
     }
 
@@ -34,7 +34,7 @@ error_t memcpy_to_user(__user void *dst, const void *src, size_t len) {
     return OK;
 }
 
-// dst_lenバイトをユーザー空間からコピーする。コピー後、ヌル終端されていなければエラーを返す。
+//从用户空间复制Dst len字节。复制后，如果不是以null结尾，则会返回错误。
 static error_t strcpy_from_user(char *dst, size_t dst_len,
                                 __user const char *src) {
     DEBUG_ASSERT(dst_len > 0);
@@ -44,7 +44,7 @@ static error_t strcpy_from_user(char *dst, size_t dst_len,
         return err;
     }
 
-    // ヌル終端されているかチェック。
+    //检查它是否以空终止。
     for (size_t i = 0; i < dst_len; i++) {
         if (dst[i] == '\0') {
             return OK;
@@ -54,37 +54,37 @@ static error_t strcpy_from_user(char *dst, size_t dst_len,
     return ERR_INVALID_ARG;
 }
 
-// 新規ユーザータスクを作成する。
+//创建新的用户任务。
 static task_t sys_task_create(__user const char *name, uaddr_t ip,
                               task_t pager) {
-    // タスク名を取得
+    //获取任务名称
     char namebuf[TASK_NAME_LEN];
     error_t err = strcpy_from_user(namebuf, sizeof(namebuf), name);
     if (err != OK) {
         return err;
     }
 
-    // ページャータスクを取得
+    //获取寻呼机任务
     struct task *pager_task = task_find(pager);
     if (!pager_task) {
         return ERR_INVALID_ARG;
     }
 
-    // 通常のユーザータスクを作成する場合
+    //创建常规用户任务时
     return task_create(namebuf, ip, pager_task);
 }
 
-// HinaVMタスクを生成する。instsはHinaVM命令列、num_instsは命令数、pagerはページャータスク。
+//生成 Hina vm 任务。 insts是hina vm指令序列，num insts是指令数，pager是分页任务。
 static task_t sys_hinavm(__user const char *name, __user hinavm_inst_t *insts,
                          size_t num_insts, task_t pager) {
-    // タスク名を取得
+    //获取任务名称
     char namebuf[TASK_NAME_LEN];
     error_t err = strcpy_from_user(namebuf, sizeof(namebuf), name);
     if (err != OK) {
         return err;
     }
 
-    // ページャータスクを取得
+    //获取寻呼机任务
     struct task *pager_task = task_find(pager);
     if (!pager_task) {
         return ERR_INVALID_ARG;
@@ -96,17 +96,17 @@ static task_t sys_hinavm(__user const char *name, __user hinavm_inst_t *insts,
         return ERR_INVALID_ARG;
     }
 
-    // HinaVMのプログラム (命令列) を取得
+    //获取HinaVM程序（指令序列）
     err = memcpy_from_user(instsbuf, insts, num_insts * sizeof(*insts));
     if (err != OK) {
         return err;
     }
 
-    // HinaVMタスクを作成
+    //创建Hina vm任务
     return hinavm_create(namebuf, instsbuf, num_insts, pager_task);
 }
 
-// タスクを削除する。
+//删除任务。
 static error_t sys_task_destroy(task_t tid) {
     struct task *task = task_find(tid);
     if (!task || task == CURRENT_TASK) {
@@ -116,27 +116,27 @@ static error_t sys_task_destroy(task_t tid) {
     return task_destroy(task);
 }
 
-// 実行中タスクを正常終了する。
+//通常终止正在运行的任务。
 __noreturn static void sys_task_exit(void) {
     task_exit(EXP_GRACE_EXIT);
 }
 
-// 実行中タスクのタスクIDを取得する。
+//获取正在运行的任务的任务ID。
 static task_t sys_task_self(void) {
     return CURRENT_TASK->tid;
 }
 
-// 物理ページを割り当てる。
+//分配物理页。
 //
-// flagsにPM_ALLOC_ALIGNが指定されている場合は、sizeバイトにアラインされたアドレスを
-// 割り当てる。
+//如果在标志中指定了 PM_ALLOC_ALIGN，则与 size 字节对齐的地址为
+//分配。
 static pfn_t sys_pm_alloc(task_t tid, size_t size, unsigned flags) {
-    // 未知・許可されていないフラグが指定されていないかチェック
+    //检查是否指定了未知/不允许的标志
     if ((flags & ~(PM_ALLOC_ZEROED | PM_ALLOC_ALIGNED)) != 0) {
         return ERR_INVALID_ARG;
     }
 
-    // 所有者となるタスクを取得
+    //获取任务所有者
     struct task *task = task_find(tid);
     if (!task) {
         return ERR_INVALID_TASK;
@@ -155,48 +155,48 @@ static pfn_t sys_pm_alloc(task_t tid, size_t size, unsigned flags) {
     return PADDR2PFN(paddr);
 }
 
-// ページを仮想アドレス空間にマップする。
+//将页面映射到虚拟地址空间。
 static paddr_t sys_vm_map(task_t tid, uaddr_t uaddr, paddr_t paddr,
                           unsigned attrs) {
-    // 操作対象のタスクを取得
+    //获取要操作的任务
     struct task *task = task_find(tid);
     if (!task) {
         return ERR_INVALID_TASK;
     }
 
-    // 未知・許可されていないフラグが指定されていないかチェック
+    //检查是否指定了未知/不允许的标志
     if ((attrs & ~(PAGE_WRITABLE | PAGE_READABLE | PAGE_EXECUTABLE)) != 0) {
         return ERR_INVALID_ARG;
     }
 
-    // ページ境界にアラインされているかチェック
+    //检查是否与页面边界对齐
     if (!IS_ALIGNED(uaddr, PAGE_SIZE) || !IS_ALIGNED(paddr, PAGE_SIZE)) {
         return ERR_INVALID_ARG;
     }
 
-    // 仮想アドレスがマップ可能かチェック
+    //检查虚拟地址是否可映射
     if (!arch_is_mappable_uaddr(uaddr)) {
         return ERR_INVALID_UADDR;
     }
 
-    attrs |= PAGE_USER;  // 常にユーザーページとしてマップする
+    attrs |= PAGE_USER;//始终映射为用户页面
     return vm_map(task, uaddr, paddr, attrs);
 }
 
-// ページを仮想アドレス空間からアンマップする。
+//从虚拟地址空间取消映射页面。
 static paddr_t sys_vm_unmap(task_t tid, uaddr_t uaddr) {
-    // 操作対象のタスクを取得
+    //获取要操作的任务
     struct task *task = task_find(tid);
     if (!task) {
         return ERR_INVALID_TASK;
     }
 
-    // ページ境界にアラインされているかチェック
+    //检查是否与页面边界对齐
     if (!IS_ALIGNED(uaddr, PAGE_SIZE)) {
         return ERR_INVALID_ARG;
     }
 
-    // 仮想アドレスがアンマップ可能かチェック
+    //检查虚拟地址是否不可映射
     if (!arch_is_mappable_uaddr(uaddr)) {
         return ERR_INVALID_UADDR;
     }
@@ -204,20 +204,20 @@ static paddr_t sys_vm_unmap(task_t tid, uaddr_t uaddr) {
     return vm_unmap(task, uaddr);
 }
 
-// メッセージを送受信する。
+//发送和接收消息。
 static error_t sys_ipc(task_t dst, task_t src, __user struct message *m,
                        unsigned flags) {
-    // 許可されていないフラグが指定されていないかチェック
+    //检查不允许的标志
     if ((flags & ~(IPC_SEND | IPC_RECV | IPC_NOBLOCK)) != 0) {
         return ERR_INVALID_ARG;
     }
 
-    // 有効なタスクIDかチェック
+    //检查它是否是有效的任务ID
     if (src < 0 || src > NUM_TASKS_MAX) {
         return ERR_INVALID_ARG;
     }
 
-    // 送信処理が含まれているのであれば、送信先タスクを取得
+    //如果包含发送处理，则获取发送目的地任务
     struct task *dst_task = NULL;
     if (flags & IPC_SEND) {
         dst_task = task_find(dst);
@@ -229,7 +229,7 @@ static error_t sys_ipc(task_t dst, task_t src, __user struct message *m,
     return ipc(dst_task, src, m, flags);
 }
 
-// 通知を送信する。
+//发送通知。
 static error_t sys_notify(task_t dst, notifications_t notifications) {
     struct task *dst_task = task_find(dst);
     if (!dst_task) {
@@ -240,29 +240,29 @@ static error_t sys_notify(task_t dst, notifications_t notifications) {
     return OK;
 }
 
-// 割り込み通知を購読する。
+//订阅未经请求的通知。
 static error_t sys_irq_listen(unsigned irq) {
     return irq_listen(CURRENT_TASK, irq);
 }
 
-// 割り込み通知の購読を解除する。
+//取消订阅未经请求的通知。
 static error_t sys_irq_unlisten(unsigned irq) {
     return irq_unlisten(CURRENT_TASK, irq);
 }
 
-// シリアルポートへの書き込みを行う。
+//写入串口。
 static int sys_serial_write(__user const char *buf, size_t buf_len) {
-    // シリアルポートへの書き込みは時間がかかるため、最大文字数を制限する。
+    //写入串口需要时间，因此限制最大字符数。
     int written_len = MIN(buf_len, 4096);
 
     char kbuf[512];
     int remaining = written_len;
     while (remaining > 0) {
-        // 書き込む文字列を一時バッファにコピーする。
+        //将要写入的字符串复制到临时缓冲区中。
         int copy_len = MIN(remaining, (int) sizeof(kbuf));
         memcpy_from_user(kbuf, buf, copy_len);
 
-        // 一時バッファの内容をシリアルポートに書き込む。
+        //将临时缓冲区的内容写入串行端口。
         for (int i = 0; i < copy_len; i++) {
             arch_serial_write(kbuf[i]);
         }
@@ -273,40 +273,40 @@ static int sys_serial_write(__user const char *buf, size_t buf_len) {
     return written_len;
 }
 
-// シリアルポートからの読み込みを行う。
+//从串口读取。
 static int sys_serial_read(__user char *buf, int max_len) {
-    // シリアルポートの受信済み文字列を一時バッファにコピーする。
+    //将串行端口接收到的字符串复制到临时缓冲区。
     char tmp[128];
     int len = serial_read((char *) &tmp, MIN(max_len, (int) sizeof(tmp)));
 
-    // 一時バッファの内容をユーザーバッファにコピーする。
+    //将临时缓冲区的内容复制到用户缓冲区。
     memcpy_to_user(buf, tmp, len);
     return len;
 }
 
-// タイムアウトを設定する。呼び出した時点から指定した時間 (ミリ秒) が経過すると、タスクに通知が
-// 送られる。値がゼロの場合は、タイムアウトを解除する。
+//设置超时。自调用以来指定的时间（以毫秒为单位）过去后，任务将收到通知。
+//发送。如果该值为零，则取消超时。
 static error_t sys_time(int timeout) {
     if (timeout < 0) {
         return ERR_INVALID_ARG;
     }
 
-    // タイムアウト時間を更新する
+    //更新超时时间
     CURRENT_TASK->timeout = (timeout == 0) ? 0 : (timeout * (TICK_HZ / 1000));
     return OK;
 }
 
-// 起動してからの経過時間をミリ秒単位で返す。
+//返回自启动以来经过的时间（以毫秒为单位）。
 static int sys_uptime(void) {
     return uptime_ticks / TICK_HZ;
 }
 
-// コンピューターの電源を切る。
+//关闭你的电脑。
 __noreturn static int sys_shutdown(void) {
     arch_shutdown();
 }
 
-// システムコールハンドラ
+//系统调用处理程序
 long handle_syscall(long a0, long a1, long a2, long a3, long a4, long n) {
     long ret;
     switch (n) {

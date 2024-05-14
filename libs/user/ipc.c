@@ -6,33 +6,33 @@
 #include <libs/user/syscall.h>
 #include <libs/user/task.h>
 
-// 非同期メッセージ
+//异步消息
 struct async_message {
-    list_elem_t next;  // 送信キューのリスト
-    task_t dst;        // 宛先タスク
-    struct message m;  // メッセージ
+    list_elem_t next;//发送队列列表
+    task_t dst;//目标任务
+    struct message m;//信息
 };
 
-// このタスクから他のタスクに向けて送信される非同期メッセージリスト。
-// 他のタスクから問い合わせ (ASYNC_RECV_MSG) があると、このリストからメッセージを探す。
+//从该任务发送到其他任务的异步消息的列表。
+//当有来自另一个任务的查询（ASYNC_RECV_MSG）时，将从该列表中搜索消息。
 static list_t async_messages = LIST_INIT(async_messages);
-// 受信済みの通知 (ビットフィールド)。
+//收到通知（位字段）。
 static notifications_t pending_notifications = 0;
 
-// ASYNC_RECV_MSGを受信した際の処理 (ノンブロッキング)
+//接收ASYNC_RECV_MSG时的处理（非阻塞）
 static error_t async_reply(task_t dst) {
-    // 送信キューからdstへの未送信メッセージを探す
+    //查找从发送队列到 dst 的未发送消息
     bool sent = false;
     LIST_FOR_EACH (am, &async_messages, struct async_message, next) {
         if (am->dst == dst) {
             if (sent) {
-                // 既にメッセージを1つ送信済みであればipc_replyが失敗してしまう
-                // (宛先タスクが受信待ち状態でない) ため、通知を送っておいて
-                // 再度ASYNC_RECV_MSGを送らせる。
+                //如果已发送一条消息，ipc_reply 将失败
+//（目标任务未处于接收等待状态），请发送通知。
+//再次发送ASYNC_RECV_MSG。
                 return ipc_notify(dst, NOTIFY_ASYNC(task_self()));
             }
 
-            // 未送信メッセージを返信する
+            //回复未发送的消息
             ipc_reply(dst, &am->m);
             list_remove(&am->next);
             free(am);
@@ -43,103 +43,103 @@ static error_t async_reply(task_t dst) {
     return OK;
 }
 
-// 非同期メッセージを送信する (ノンブロッキング)
+//发送异步消息（非阻塞）
 error_t ipc_send_async(task_t dst, struct message *m) {
-    // メッセージを送信キューに挿入する
+    //将消息插入发送队列
     struct async_message *am = malloc(sizeof(*am));
     am->dst = dst;
     memcpy(&am->m, m, sizeof(am->m));
     list_elem_init(&am->next);
     list_push_back(&async_messages, &am->next);
 
-    // 送信先タスクに通知を送る
+    //向目标任务发送通知
     return ipc_notify(dst, NOTIFY_ASYNC(task_self()));
 }
 
-// メッセージを送信する。宛先タスクが受信状態になるまでブロックする。
+//发送一个消息。阻塞直到目标任务处于接收状态。
 error_t ipc_send(task_t dst, struct message *m) {
     return sys_ipc(dst, 0, m, IPC_SEND);
 }
 
-// メッセージを送信する。即座にメッセージ送信を完了できない場合は ERR_WOULD_BLOCK を返す。
+//发送一个消息。如果消息发送不能立即完成，则返回ERR_WOULD_BLOCK。
 error_t ipc_send_noblock(task_t dst, struct message *m) {
     return sys_ipc(dst, 0, m, IPC_SEND | IPC_NOBLOCK);
 }
 
-// メッセージを送信する。即座にメッセージ送信を完了できない場合は警告メッセージを出力し、
-// メッセージを破棄する。
+//发送一个消息。如果无法立即完成消息发送，则会输出警告消息。
+//丢弃该消息。
 void ipc_reply(task_t dst, struct message *m) {
     error_t err = ipc_send_noblock(dst, m);
     OOPS_OK(err);
 }
 
-// エラーメッセージを送信する。即座にメッセージ送信を完了できない場合は警告メッセージを出力し、
-// メッセージを破棄する。
+//发送错误消息。如果无法立即完成消息发送，则会输出警告消息。
+//丢弃该消息。
 void ipc_reply_err(task_t dst, error_t error) {
     struct message m;
     m.type = error;
     ipc_reply(dst, &m);
 }
 
-// 受信済み通知のひとつを取り出し、メッセージに変換する。また、非同期メッセージの受信処理も
-// 透過的に行う。
+//获取收到的通知之一并将其转换为消息。另外，异步消息的接收流程是
+//透明地做。
 static error_t recv_notification_as_message(struct message *m) {
     error_t err;
 
-    // 受信済み通知ビットフィールドの中で何番目のビットが立っているかを調べる。
+    //检查接收到的通知位字段中设置了什么位。
     int index = __builtin_ffsll(pending_notifications) - 1;
     DEBUG_ASSERT(index >= 0);
 
-    // 通知の種類に応じてメッセージを作成する。
+    //根据通知类型创建消息。
     switch (1 << index) {
-        // 割り込み通知
+        //中断通知
         case NOTIFY_IRQ:
             m->type = NOTIFY_IRQ_MSG;
             err = OK;
             break;
-        // タイムアウト通知
+        //超时通知
         case NOTIFY_TIMER:
             m->type = NOTIFY_TIMER_MSG;
             err = OK;
             break;
-        // 非同期メッセージ受信通知
+        //异步消息接收通知
         case NOTIFY_ASYNC_START ... NOTIFY_ASYNC_END: {
-            // 通知の送信元に対して受信待ちメッセージを問い合わせる
+            //查询通知发送者是否有待处理的消息
             task_t src = index - NOTIFY_ASYNC_BASE;
             m->type = ASYNC_RECV_MSG;
             err = ipc_call(src, m);
             break;
         }
         case NOTIFY_ABORTED:
-            // カーネル内部で使われる通知なので、ここには来ないはず。
+            //此通知在内核内部使用，因此不应出现在此处。
         default:
             PANIC("unhandled notification: %x (index=%d)",
                   pending_notifications, index);
     }
 
-    // 処理した通知を削除する
+    //删除已处理的通知
     pending_notifications &= ~(1 << index);
     return err;
 }
 
-// 任意のタスクからのメッセージを受信する (オープン受信)。通知・非同期メッセージパッシング周り
-// の処理も透過的に行う。
+//接收来自任何任务的消息（开放接收）。通知/异步消息传递
+//处理也是透明执行的。
 static error_t ipc_recv_any(struct message *m) {
     while (true) {
-        // 受信済み通知があれば、その通知をメッセージに変換して返す。
+        //如果有收到通知，则将通知转换为消息并返回。
         if (pending_notifications) {
             return recv_notification_as_message(m);
         }
 
-        // メッセージを受信する。
+        //接收消息。
         error_t err = sys_ipc(0, IPC_ANY, m, IPC_RECV);
         if (err != OK) {
             return err;
         }
 
-        // メッセージの種類に応じた処理を行う。
+        //根据消息类型进行处理。
         switch (m->type) {
-            // 通知処理: 通知を受信済み通知ビットフィールドに追加する。
+            //通知处理：将通知添加到收到的通知位字段。
             case NOTIFY_MSG:
                 if (m->src != FROM_KERNEL) {
                     WARN(
@@ -150,7 +150,7 @@ static error_t ipc_recv_any(struct message *m) {
 
                 pending_notifications |= m->notify.notifications;
                 return recv_notification_as_message(m);
-            // 非同期メッセージ問い合わせ処理: 送信元タスクへの非同期メッセージがあれば返す。
+            //异步消息查询处理：将任何异步消息返回给发送方任务。
             case ASYNC_RECV_MSG: {
                 error_t err = async_reply(m->src);
                 if (err != OK) {
@@ -159,7 +159,7 @@ static error_t ipc_recv_any(struct message *m) {
                 }
                 continue;
             }
-            // その他のメッセージ: エラーでなければそのまま返す。
+            //其他消息：如果没有错误，则按原样返回。
             default:
                 if (IS_ERROR(m->type)) {
                     return m->type;
@@ -170,22 +170,22 @@ static error_t ipc_recv_any(struct message *m) {
     }
 }
 
-// メッセージを受信する。メッセージが届くまでブロックする。
+//接收消息。阻塞直到消息到达。
 //
-// src が IPC_ANY の場合は、任意のタスクからのメッセージを受信する (オープン受信)。
+//如果 src 为 IPC_ANY，则从任何任务接收消息（开放接收）。
 error_t ipc_recv(task_t src, struct message *m) {
     if (src == IPC_ANY) {
-        // オープン受信
+        //打开接收
         return ipc_recv_any(m);
     }
 
-    // クローズド受信
+    //封闭式接待
     error_t err = sys_ipc(0, src, m, IPC_RECV);
     if (err != OK) {
         return err;
     }
 
-    // エラーメッセージが返ってくれば、そのエラーを返す。
+    //如果返回错误消息，则返回该错误。
     if (IS_ERROR(m->type)) {
         return m->type;
     }
@@ -193,14 +193,14 @@ error_t ipc_recv(task_t src, struct message *m) {
     return OK;
 }
 
-// メッセージを送信し、その宛先からのメッセージを待つ。
+//发送消息并等待收件人的消息。
 error_t ipc_call(task_t dst, struct message *m) {
     error_t err = sys_ipc(dst, dst, m, IPC_CALL);
     if (err != OK) {
         return err;
     }
 
-    // エラーメッセージが返ってくれば、そのエラーを返す。
+    //如果返回错误消息，则返回该错误。
     if (IS_ERROR(m->type)) {
         return m->type;
     }
@@ -208,12 +208,12 @@ error_t ipc_call(task_t dst, struct message *m) {
     return OK;
 }
 
-// 通知を送信する。
+//发送通知。
 error_t ipc_notify(task_t dst, notifications_t notifications) {
     return sys_notify(dst, notifications);
 }
 
-// サービスを登録する。
+//注册您的服务。
 error_t ipc_register(const char *name) {
     struct message m;
     m.type = SERVICE_REGISTER_MSG;
@@ -221,7 +221,7 @@ error_t ipc_register(const char *name) {
     return ipc_call(VM_SERVER, &m);
 }
 
-// サービス名からタスクIDを検索する。サービスが登録されるまでブロックする。
+//从服务名称中搜索任务 ID。阻塞直到服务注册。
 task_t ipc_lookup(const char *name) {
     struct message m;
     m.type = SERVICE_LOOKUP_MSG;

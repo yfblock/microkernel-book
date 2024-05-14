@@ -5,10 +5,10 @@
 #include "task.h"
 #include <libs/common/string.h>
 
-// 物理メモリの各連続領域 (ゾーン) のリスト。
+//物理内存的每个连续区域（区域）的列表。
 static list_t zones = LIST_INIT(zones);
 
-// 物理アドレスに対応するゾーンを探す。
+//找到物理地址对应的区域。
 static struct page *find_page_by_paddr(paddr_t paddr,
                                        enum memory_zone_type *zone_type) {
     DEBUG_ASSERT(IS_ALIGNED(paddr, PAGE_SIZE));
@@ -28,7 +28,7 @@ static struct page *find_page_by_paddr(paddr_t paddr,
     return NULL;
 }
 
-// ゾーンを追加する。
+//添加区域。
 static void add_zone(struct memory_zone *zone, enum memory_zone_type type,
                      paddr_t paddr, size_t num_pages) {
     zone->type = type;
@@ -42,7 +42,7 @@ static void add_zone(struct memory_zone *zone, enum memory_zone_type type,
     list_push_back(&zones, &zone->next);
 }
 
-// start番目からnum_pages個の物理ページが空いているかどうかを返す。
+//返回从 Start 开始的 num 页物理页是否空闲。
 static bool is_contiguously_free(struct memory_zone *zone, size_t start,
                                  size_t num_pages) {
     for (size_t i = 0; i < num_pages; i++) {
@@ -53,33 +53,33 @@ static bool is_contiguously_free(struct memory_zone *zone, size_t start,
     return true;
 }
 
-// sizeバイトの連続した物理メモリ領域を物理ページ単位で割り当てる。ownerはその領域の
-// 所有者となるタスク。NULLを指定するとカーネルが所有者となる。
+//在物理页中分配size字节的连续物理内存区域。该地区的所有者
+//任务是成为主人。如果指定 NULL，则内核成为所有者。
 //
-// flagsには次のフラグを指定できる。
+//可以在 flags 中指定以下标志。
 //
-// - PM_ALLOC_ZEROED: 物理ページをゼロクリアする
-// - PM_ALLOC_ALIGNED: sizeでアラインされた物理メモリアドレスを返す
+//-PM_ALLOC_ZEROED：将物理页清零
+//-PM_ALLOC_ALIGNED：返回按大小对齐的物理内存地址
 paddr_t pm_alloc(size_t size, struct task *owner, unsigned flags) {
-    size_t aligned_size = ALIGN_UP(size, PAGE_SIZE);  // 実際に割り当てるサイズ
-    size_t num_pages = aligned_size / PAGE_SIZE;      // 割り当てる物理ページ数
+    size_t aligned_size = ALIGN_UP(size, PAGE_SIZE);//实际分配的大小
+    size_t num_pages = aligned_size / PAGE_SIZE;//要分配的物理页数
     LIST_FOR_EACH (zone, &zones, struct memory_zone, next) {
         if (zone->type != MEMORY_ZONE_FREE) {
-            // MMIO領域は使えない
+            //Mmio区域无法使用
             continue;
         }
 
-        // 各start番目からnum_pages個の物理ページが空いているかどうかを調べる。
+        //检查每次开始的numpages物理页是否空闲。
         for (size_t start = 0; start < zone->num_pages; start++) {
             paddr_t paddr = zone->base + start * PAGE_SIZE;
             if ((flags & PM_ALLOC_ALIGNED) != 0
                 && !IS_ALIGNED(paddr, aligned_size)) {
-                // アラインメントが合わないのでスキップ
+                //由于未对准而跳过
                 continue;
             }
 
             if (is_contiguously_free(zone, start, num_pages)) {
-                // 空いているので各物理ページを割り当てる
+                //分配每个空闲的物理页
                 for (size_t i = 0; i < num_pages; i++) {
                     struct page *page = &zone->pages[start + i];
                     page->ref_count = 1;
@@ -91,7 +91,7 @@ paddr_t pm_alloc(size_t size, struct task *owner, unsigned flags) {
                     }
                 }
 
-                // 必要があればゼロクリアする
+                //必要时清零
                 if (flags & PM_ALLOC_ZEROED) {
                     memset((void *) arch_paddr_to_vaddr(paddr), 0,
                            PAGE_SIZE * num_pages);
@@ -106,11 +106,11 @@ paddr_t pm_alloc(size_t size, struct task *owner, unsigned flags) {
     return 0;
 }
 
-// 物理ページを1つ解放する。
+//免费一页物理页。
 static void free_page(struct page *page) {
     DEBUG_ASSERT(page->ref_count > 0);
 
-    // 参照カウントを減らす。0になるまでは余所で参照されているので注意。
+    //减少引用计数。请注意，在达到 0 之前，它将在其他地方引用。
     page->ref_count--;
 
     if (page->ref_count == 0) {
@@ -118,9 +118,9 @@ static void free_page(struct page *page) {
     }
 }
 
-// 物理ページの所有者を設定する。所有者タスクが終了するときに、指定した物理ページの参照カウント
-// が減算されるようになる。タスクに対して物理ページを割り当てたいが、まだそのタスクの初期化が
-// 終わっていない場合に使う。
+//设置物理页的所有者。 Owner任务退出时指定物理页的引用计数
+//将被减去。我想为一个任务分配一个物理页，但该任务还没有初始化。
+//未完成时使用。
 void pm_own_page(paddr_t paddr, struct task *owner) {
     struct page *page = find_page_by_paddr(paddr, NULL);
 
@@ -133,30 +133,30 @@ void pm_own_page(paddr_t paddr, struct task *owner) {
     list_push_back(&owner->pages, &page->next);
 }
 
-// pm_alloc関数で割り当てた、連続した物理メモリ領域を解放する。
+//释放由 Pm alloc 函数分配的连续物理内存区域。
 void pm_free(paddr_t paddr, size_t size) {
     DEBUG_ASSERT(IS_ALIGNED(size, PAGE_SIZE));
 
-    // 各ページを解放する
+    //免费每页
     for (size_t offset = 0; offset < size; offset += PAGE_SIZE) {
-        // 物理アドレスからページ管理構造体を取得する
+        //从物理地址获取页管理结构
         struct page *page = find_page_by_paddr(paddr + offset, NULL);
         ASSERT(page != NULL);
         free_page(page);
     }
 }
 
-// pm_free関数の引数にリストを指定するバージョン。
+//将列表指定为 Pm free 函数的参数的版本。
 void pm_free_by_list(list_t *pages) {
     LIST_FOR_EACH (page, pages, struct page, next) {
         free_page(page);
     }
 }
 
-// ページを指定した物理アドレスにマップ (ページテーブルへの追加) する。
+//将页面映射（添加到页表）到指定的物理地址。
 error_t vm_map(struct task *task, uaddr_t uaddr, paddr_t paddr,
                unsigned attrs) {
-    // 物理アドレスからページ管理構造体を取得する。
+    //从物理地址获取页管理结构。
     enum memory_zone_type zone_type;
     struct page *page = find_page_by_paddr(paddr, &zone_type);
     if (!page) {
@@ -164,9 +164,9 @@ error_t vm_map(struct task *task, uaddr_t uaddr, paddr_t paddr,
         return ERR_INVALID_PADDR;
     }
 
-    // ページをマップしてよいか、言い換えるとその物理ページへのアクセスを許可してよいかを判断する
+    //确定是否可以映射页面，或者换句话说，是否可以授予对其物理页面的访问权限
     switch (zone_type) {
-        // RAM領域
+        //公羊面积
         case MEMORY_ZONE_FREE:
             if (page->ref_count == 0) {
                 WARN("%s: vm_map: paddr %p is not allocated", task->name,
@@ -174,20 +174,20 @@ error_t vm_map(struct task *task, uaddr_t uaddr, paddr_t paddr,
                 return ERR_INVALID_PADDR;
             }
 
-            // 次のいずれかの条件を満たすときにページをマップできる:
-            //
-            // 1) taskがそのページを所有しているタスク
-            // 2) taskがそのページを所有しているタスクのページャタスク
+            //当满足以下条件之一时，可以映射页面：
+//
+//1) 其页面由任务拥有的任务
+//2）页面所属任务的寻呼任务
             if (page->owner != task && page->owner->pager != task) {
                 WARN("%s: vm_map: paddr %p is not owned", task->name, paddr);
                 return ERR_INVALID_PADDR;
             }
             break;
-        // MMIO領域
+        //米奥区
         case MEMORY_ZONE_MMIO:
             if (page->ref_count > 0) {
-                // 既にマップされている。複数のタスクが同じMMIO領域をマップすることはできない。
-                // 複数のデバイスドライバサーバが同時に同じデバイスを操作することはないはず。
+                //已经映射了。多个任务不能映射同一个MMIO区域。
+//多个设备驱动程序服务器不应同时操作同一设备。
                 WARN("%s: vm_map: device paddr %p is already mapped (owner=%s)",
                      task->name, paddr, page->owner ? page->owner->name : NULL);
                 return ERR_INVALID_PADDR;
@@ -200,7 +200,7 @@ error_t vm_map(struct task *task, uaddr_t uaddr, paddr_t paddr,
         return err;
     }
 
-    // MMIO領域の場合はタスクを所有者として登録する。RAM領域の場合はpm_alloc関数で登録済み。
+    //对于Mmio区域，将任务注册为所有者。如果是ram区域，则已经使用pm alloc函数注册了。
     if (zone_type == MEMORY_ZONE_MMIO && task) {
         list_push_back(&task->pages, &page->next);
     }
@@ -209,7 +209,7 @@ error_t vm_map(struct task *task, uaddr_t uaddr, paddr_t paddr,
     return OK;
 }
 
-// ページをアンマップ (ページテーブルからの削除) する。
+//取消映射（从页表中删除）页面。
 error_t vm_unmap(struct task *task, uaddr_t uaddr) {
     if (!arch_is_mappable_uaddr(uaddr)) {
         return ERR_INVALID_ARG;
@@ -223,31 +223,31 @@ error_t vm_unmap(struct task *task, uaddr_t uaddr) {
     return OK;
 }
 
-// ページフォルトハンドラ
+//页面错误处理程序
 void handle_page_fault(vaddr_t vaddr, vaddr_t ip, unsigned fault) {
-    // カーネル内ではページフォルトが起きない
-    // (ユーザーポインタのメモリコピー時には PAGE_FAULT_USER がセットされている)
+    //内核中没有发生页面错误
+//（复制用户指针内存时设置PAGE_FAULT_USER）
     if ((fault & PAGE_FAULT_USER) == 0) {
         PANIC("page fault in kernel: vaddr=%p, ip=%p, reason=%x", vaddr, ip,
               fault);
     }
 
-    // ページフォルトが起きたアドレスがマップ可能なアドレスかどうかチェックする
-    // (NULLページやカーネル領域のアドレスはマップ不可)
+    //检查发生缺页的地址是否是可映射地址
+//（NULL页和内核区地址无法映射）
     if (!arch_is_mappable_uaddr(vaddr)) {
         WARN("%s: page fault at unmappable vaddr: vaddr=%p, ip=%p",
              CURRENT_TASK->name, vaddr, ip);
         task_exit(EXP_INVALID_UADDR);
     }
 
-    // アイドルタスクと最初のユーザータスクではページフォルトが起きない
+    //空闲任务和第一个用户任务不会发生页面错误
     struct task *pager = CURRENT_TASK->pager;
     if (!pager) {
         PANIC("%s: unexpected page fault: vaddr=%p, ip=%p", CURRENT_TASK->name,
               vaddr, ip);
     }
 
-    // ページャタスクにページフォルト処理要求メッセージを送信し返信を待つ
+    //向寻呼任务发送缺页处理请求消息并等待回复
     struct message m;
     m.type = PAGE_FAULT_MSG;
     m.page_fault.task = CURRENT_TASK->tid;
@@ -257,13 +257,13 @@ void handle_page_fault(vaddr_t vaddr, vaddr_t ip, unsigned fault) {
     error_t err = ipc(pager, pager->tid, (__user struct message *) &m,
                       IPC_CALL | IPC_KERNEL);
 
-    // ページャタスクからの応答メッセージが正しいかどうかチェックする
+    //检查寻呼任务的响应消息是否正确
     if (err != OK || m.type != PAGE_FAULT_REPLY_MSG) {
         task_exit(EXP_INVALID_PAGER_REPLY);
     }
 }
 
-// メモリ管理システムの初期化
+//初始化内存管理系统
 void memory_init(struct bootinfo *bootinfo) {
     struct memory_map *memory_map = &bootinfo->memory_map;
     for (int i = 0; i < memory_map->num_frees; i++) {

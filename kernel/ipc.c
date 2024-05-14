@@ -7,18 +7,18 @@
 #include <libs/common/string.h>
 #include <libs/common/types.h>
 
-// メッセージの送信処理
+// 消息发送流程
 static error_t send_message(struct task *dst, __user struct message *m,
                             unsigned flags) {
-    // 自分自身にはメッセージを送信できない
+    // 我无法给自己发送消息
     struct task *current = CURRENT_TASK;
     if (dst == current) {
         WARN("%s: tried to send a message to itself", current->name);
         return ERR_INVALID_ARG;
     }
 
-    // 送信するメッセージをコピーする。ユーザーポインタの場合、ページフォルトが発生する可能性
-    // があるので注意
+    // 复制您要发送的消息。用户指针情况下可能出现页面错误
+    // 请注意，有
     struct message copied_m;
     if (flags & IPC_KERNEL) {
         memcpy(&copied_m, (struct message *) m, sizeof(struct message));
@@ -29,7 +29,7 @@ static error_t send_message(struct task *dst, __user struct message *m,
         }
     }
 
-    // 送信先がメッセージを待っているか確認
+    // 检查收件人是否正在等待您的消息
     bool ready = dst->state == TASK_BLOCKED
                  && (dst->wait_for == IPC_ANY || dst->wait_for == current->tid);
     if (!ready) {
@@ -37,7 +37,7 @@ static error_t send_message(struct task *dst, __user struct message *m,
             return ERR_WOULD_BLOCK;
         }
 
-        // 互いにメッセージを送り合おうとしている場合はデッドロックになるので、エラーを返す。
+        // 如果它们尝试互相发送消息，就会发生死锁并返回错误。
         LIST_FOR_EACH (task, &current->senders, struct task, waitqueue_next) {
             if (task->tid == dst->tid) {
                 WARN(
@@ -49,34 +49,34 @@ static error_t send_message(struct task *dst, __user struct message *m,
             }
         }
 
-        // 宛先の送信待ちキューに実行中タスクを追加し、ブロック状態にする
+        // 将正在运行的任务添加到目标的发送队列并将其置于阻塞状态
         list_push_back(&dst->senders, &current->waitqueue_next);
         task_block(current);
 
-        // CPUを他のタスクに譲る。宛先タスクが受信状態になると、このタスクが再開される
+        // 将 CPU 让给其他任务。当目标任务处于接收状态时，该任务将恢复。
         task_switch();
 
-        // 宛先タスクが終了した場合は送信処理を中断する
+        // 如果目标任务完成则中断发送过程
         if (current->notifications & NOTIFY_ABORTED) {
             current->notifications &= ~NOTIFY_ABORTED;
             return ERR_ABORTED;
         }
     }
 
-    // メッセージを送信して、宛先タスクを再開する
+    // 发送消息并恢复目标任务
     memcpy(&dst->m, &copied_m, sizeof(struct message));
     dst->m.src = (flags & IPC_KERNEL) ? FROM_KERNEL : current->tid;
     task_resume(dst);
     return OK;
 }
 
-// メッセージの受信処理
+// 消息接收处理
 static error_t recv_message(task_t src, __user struct message *m,
                             unsigned flags) {
     struct task *current = CURRENT_TASK;
     struct message copied_m;
     if (src == IPC_ANY && current->notifications) {
-        // 通知がある場合は、それをメッセージとして受信する
+        //以消息形式接收通知（如果有）
         copied_m.type = NOTIFY_MSG;
         copied_m.src = FROM_KERNEL;
         copied_m.notify.notifications = current->notifications;
@@ -86,7 +86,7 @@ static error_t recv_message(task_t src, __user struct message *m,
             return ERR_WOULD_BLOCK;
         }
 
-        // 送信待ちキューに `src` に合致するタスクがあれば、それを再開する
+        //如果发送队列中有匹配`src`的任务，则重新启动它
         LIST_FOR_EACH (sender, &current->senders, struct task, waitqueue_next) {
             if (src == IPC_ANY || src == sender->tid) {
                 DEBUG_ASSERT(sender->state == TASK_BLOCKED);
@@ -98,18 +98,18 @@ static error_t recv_message(task_t src, __user struct message *m,
             }
         }
 
-        // メッセージを受信するまで待つ
+        //等待收到消息
         current->wait_for = src;
         task_block(current);
         task_switch();
 
-        // メッセージを受け取った
+        //收到消息
         current->wait_for = IPC_DENY;
         memcpy(&copied_m, &current->m, sizeof(struct message));
     }
 
-    // 受信したメッセージをコピーする。ユーザーポインタの場合、ページフォルトが発生する可能性
-    // があるので注意
+    //复制收到的消息。用户指针情况下可能出现页面错误
+//请注意，有
     if (flags & IPC_KERNEL) {
         memcpy((void *) m, &copied_m, sizeof(struct message));
     } else {
@@ -122,10 +122,10 @@ static error_t recv_message(task_t src, __user struct message *m,
     return OK;
 }
 
-// メッセージを送受信する。
+//发送和接收消息。
 error_t ipc(struct task *dst, task_t src, __user struct message *m,
             unsigned flags) {
-    // 送信操作
+    //发送操作
     if (flags & IPC_SEND) {
         error_t err = send_message(dst, m, flags);
         if (err != OK) {
@@ -133,7 +133,7 @@ error_t ipc(struct task *dst, task_t src, __user struct message *m,
         }
     }
 
-    // 受信操作
+    //接收操作
     if (flags & IPC_RECV) {
         error_t err = recv_message(src, m, flags);
         if (err != OK) {
@@ -144,18 +144,18 @@ error_t ipc(struct task *dst, task_t src, __user struct message *m,
     return OK;
 }
 
-// 通知を送信する。
+//发送通知。
 void notify(struct task *dst, notifications_t notifications) {
     if (dst->state == TASK_BLOCKED && dst->wait_for == IPC_ANY) {
-        // 宛先タスクがオープン受信状態で待っている。NOTIFY_MSGメッセージを送った体で
-        // 通知を即座に配送する。
+        //目标任务正在等待打开接收状态。在发送 NOTIFY_MSG 消息的正文中
+//立即发送通知。
         dst->m.type = NOTIFY_MSG;
         dst->m.src = FROM_KERNEL;
         dst->m.notify.notifications = dst->notifications | notifications;
         dst->notifications = 0;
         task_resume(dst);
     } else {
-        // 宛先タスクがオープン受信をするまで通知を保留する。
+        //保留通知，直到目标任务打开接收。
         dst->notifications |= notifications;
     }
 }
