@@ -1,7 +1,7 @@
 #include <libs/common/print.h>
 #include <libs/common/string.h>
 
-// メモリの内容を比較する。
+//比较内存的内容。
 int memcmp(const void *p1, const void *p2, size_t len) {
     uint8_t *s1 = (uint8_t *) p1;
     uint8_t *s2 = (uint8_t *) p2;
@@ -14,7 +14,7 @@ int memcmp(const void *p1, const void *p2, size_t len) {
     return (len > 0) ? *s1 - *s2 : 0;
 }
 
-// メモリ領域の各バイトを指定した値で埋める。
+//用指定的值填充内存区域的每个字节。
 void *memset(void *dst, int ch, size_t len) {
     uint8_t *d = dst;
     while (len-- > 0) {
@@ -24,9 +24,9 @@ void *memset(void *dst, int ch, size_t len) {
     return dst;
 }
 
-// メモリ領域をコピーする。
+//复制一个内存区域。
 void *memcpy(void *dst, const void *src, size_t len) {
-    DEBUG_ASSERT(len < 256 * 1024 * 1024 /* 256MiB */
+    DEBUG_ASSERT(len < 256 * 1024 * 1024/*256MiB*/
                  && "too long memcpy (perhaps integer overflow?)");
 
     uint8_t *d = dst;
@@ -39,9 +39,9 @@ void *memcpy(void *dst, const void *src, size_t len) {
     return dst;
 }
 
-// メモリ領域をコピーする。重なりがあっても正しく動作する。
+//复制一个内存区域。即使存在重叠，它也能正常工作。
 void *memmove(void *dst, const void *src, size_t len) {
-    DEBUG_ASSERT(len < 256 * 1024 * 1024 /* 256MiB */
+    DEBUG_ASSERT(len < 256 * 1024 * 1024/*256MiB*/
                  && "too long memmove (perhaps integer overflow?)");
 
     if ((uintptr_t) dst <= (uintptr_t) src) {
@@ -58,7 +58,7 @@ void *memmove(void *dst, const void *src, size_t len) {
     return dst;
 }
 
-// 文字列の長さを返す。
+//返回字符串的长度。
 size_t strlen(const char *s) {
     size_t len = 0;
     while (*s != '\0') {
@@ -68,7 +68,7 @@ size_t strlen(const char *s) {
     return len;
 }
 
-// 文字列を比較する。同じなら0を返す。
+//比较字符串。如果相同，则返回 0。
 int strcmp(const char *s1, const char *s2) {
     while (true) {
         if (*s1 != *s2) {
@@ -86,7 +86,7 @@ int strcmp(const char *s1, const char *s2) {
     return 0;
 }
 
-// 指定した文字数まで文字列を比較する。同じなら0を返す。
+//比较字符串直至指定的字符数。如果相同，则返回 0。
 int strncmp(const char *s1, const char *s2, size_t len) {
     while (len > 0) {
         if (*s1 != *s2) {
@@ -94,7 +94,7 @@ int strncmp(const char *s1, const char *s2, size_t len) {
         }
 
         if (*s1 == '\0') {
-            // Both `*s1` and `*s2` equal to '\0'.
+            //`*s1` 和 `*s2` 都等于 '\0'。
             break;
         }
 
@@ -106,7 +106,7 @@ int strncmp(const char *s1, const char *s2, size_t len) {
     return 0;
 }
 
-// 文字列をコピーする。宛先のバッファサイズを超える場合は、バッファに収まるだけをコピーする。
+//复制一个字符串。如果超过目标缓冲区大小，则仅复制适合缓冲区的内容。
 char *strcpy_safe(char *dst, size_t dst_len, const char *src) {
     ASSERT(dst_len > 0);
 
@@ -120,7 +120,7 @@ char *strcpy_safe(char *dst, size_t dst_len, const char *src) {
     return dst;
 }
 
-// 指定した文字を文字列から探し、その位置を返す。
+//在字符串中搜索指定字符并返回其位置。
 char *strchr(const char *str, int c) {
     char *s = (char *) str;
     while (*s != '\0') {
@@ -134,7 +134,7 @@ char *strchr(const char *str, int c) {
     return NULL;
 }
 
-// 指定した文字列を文字列から探し、その位置を返す。
+//在字符串中搜索指定字符串并返回其位置。
 char *strstr(const char *haystack, const char *needle) {
     char *s = (char *) haystack;
     size_t needle_len = strlen(needle);
@@ -149,7 +149,7 @@ char *strstr(const char *haystack, const char *needle) {
     return NULL;
 }
 
-// 文字列を数値に変換する。10進数のみ対応。
+//将字符串转换为数字。仅支持十进制数字。
 int atoi(const char *s) {
     int x = 0;
     while ('0' <= *s && *s <= '9') {

@@ -2,38 +2,38 @@
 #include "../asmdefs.h"
 #include <libs/common/types.h>
 
-// 仮想アドレス空間上のカーネルメモリ領域の開始アドレス。
+//虚拟地址空间中内核内存区域的起始地址。
 #define KERNEL_BASE 0x80000000
-// IRQの最大数。
+//最大 Irq 数。
 #define IRQ_MAX 32
 
-// RISC-V特有のタスク管理構造体。
+//RISC V 特定任务管理结构。
 struct arch_task {
-    uint32_t sp;        // 次回実行時に復元されるべきカーネルスタックの値
-    uint32_t sp_top;    // カーネルスタックの上端
-    paddr_t sp_bottom;  // カーネルスタックの底
+    uint32_t sp;//下次运行时恢复的内核堆栈值
+    uint32_t sp_top;//内核栈顶
+    paddr_t sp_bottom;//内核栈底部
 };
 
-// RISC-V特有のページテーブル管理構造体。
+//RISC v 特定的页表管理结构。
 struct arch_vm {
-    paddr_t table;  // ページテーブルの物理アドレス (Sv32)
+    paddr_t table;//页表的物理地址（Sv32）
 };
 
-// RISC-V特有のCPUローカル変数。順番を変える時はasmdefs.hで定義しているマクロも更新する。
+//Risc v 特定的 cpu 局部变量。更改顺序时，还要更新 asmdefs.h 中定义的宏。
 struct arch_cpuvar {
-    uint32_t sscratch;  // 変数の一時保管場所
-    uint32_t sp_top;    // 実行中タスクのカーネルスタックの上端
+    uint32_t sscratch;//变量的临时存储位置
+    uint32_t sp_top;//运行任务的内核栈顶
 
-    // タイマー割り込みハンドラ (M-mode) で使用。
-    uint32_t mscratch0;   // 変数の一時保管場所
-    uint32_t mscratch1;   // 変数の一時保管場所その2
-    paddr_t mtimecmp;     // MTIMECMPのアドレス
-    paddr_t mtime;        // MTIMEのアドレス
-    uint32_t interval;    // MTIMECMPに加算していく値
-    uint64_t last_mtime;  // 直前のmtimeの値
+    //用于定时器中断处理程序（M 模式）。
+    uint32_t mscratch0;//变量的临时存储位置
+    uint32_t mscratch1;//变量第 2 部分的临时存储位置
+    paddr_t mtimecmp;//MTIMECMP 地址
+    paddr_t mtime;//MTIME地址
+    uint32_t interval;//要添加到 MTIMECMP 的值
+    uint64_t last_mtime;//最后的 mtime 值
 };
 
-// CPUVAR_* マクロが正しく定義されているかをチェックするためのマクロ。
+//用于检查 CPUVAR_*宏定义是否正确的宏。
 #define ARCH_TYPES_STATIC_ASSERTS                                              \
     STATIC_ASSERT(offsetof(struct cpuvar, arch.sscratch) == CPUVAR_SSCRATCH,   \
                   "CPUVAR_SSCRATCH is incorrect");                             \
@@ -50,24 +50,24 @@ struct arch_cpuvar {
     STATIC_ASSERT(offsetof(struct cpuvar, arch.interval) == CPUVAR_INTERVAL,   \
                   "CPUVAR_INTERVAL is incorrect");
 
-// CPUVARマクロの中身。現在のCPUローカル変数のアドレスを返す。
+//Cpuvar 宏的内容。返回当前 cpu 局部变量的地址。
 static inline struct cpuvar *arch_cpuvar_get(void) {
-    // tpレジスタにCPUローカル変数のアドレスが格納されている。
+    //CPU局部变量的地址存储在Tp寄存器中。
     uint32_t tp;
     __asm__ __volatile__("mv %0, tp" : "=r"(tp));
     return (struct cpuvar *) tp;
 }
 
-// 物理アドレスを仮想アドレスに変換する。
+//将物理地址转换为虚拟地址。
 static inline vaddr_t arch_paddr_to_vaddr(paddr_t paddr) {
-    // 0x80000000 以上の物理アドレスは同じ仮想アドレスにマッピングされているため、
-    // そのまま返す。
+    //0x80000000以上的物理地址映射到同一个虚拟地址，所以
+//按原样返回。
     return paddr;
 }
 
-// ユーザータスクが利用してもよい仮想アドレスかどうかを返す。
+//返回虚拟地址是否可以被用户任务使用。
 static inline bool arch_is_mappable_uaddr(uaddr_t uaddr) {
-    // 0番地付近はヌルポインタ参照の可能性が高いため許可しない。また、KERNEL_BASE以降は
-    // カーネルが利用するので許可しない。
+    //地址 0 附近不允许，因为空指针引用的可能性很高。另外，在 KERNEL_BASE 之后
+//它由内核使用，因此不允许它。
     return PAGE_SIZE <= uaddr && uaddr < KERNEL_BASE;
 }

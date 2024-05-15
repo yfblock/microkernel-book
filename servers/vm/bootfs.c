@@ -2,20 +2,19 @@
 #include <libs/common/print.h>
 #include <libs/common/string.h>
 
-extern char __bootfs[];            // BootFSイメージ
-static struct bootfs_file *files;  // BootFSのファイルリスト
-static unsigned num_files;         // BootFS内のファイル数
-
-// BootFSからファイルを読み込む。
+extern char __bootfs[];//BootFS 映像
+static struct bootfs_file *files;//BootFS 文件列表
+static unsigned num_files;//BootFS 中的文件数量
+//从 BootFS 加载文件。
 void bootfs_read(struct bootfs_file *file, offset_t off, void *buf,
                  size_t len) {
     void *p = (void *) (((uaddr_t) __bootfs) + file->offset + off);
     memcpy(buf, p, len);
 }
 
-// BootFSのファイルを開く。
+//打开引导 fs 文件。
 struct bootfs_file *bootfs_open(const char *path) {
-    // ファイル名が一致するエントリを探す。
+    //查找具有匹配文件名的条目。
     struct bootfs_file *file;
     for (int i = 0; (file = bootfs_open_iter(i)) != NULL; i++) {
         if (!strncmp(file->name, path, sizeof(file->name))) {
@@ -26,7 +25,7 @@ struct bootfs_file *bootfs_open(const char *path) {
     return NULL;
 }
 
-// index番目のファイルエントリを返す。
+//返回第 Index 个文件条目。
 struct bootfs_file *bootfs_open_iter(unsigned index) {
     if (index >= num_files) {
         return NULL;
@@ -35,7 +34,7 @@ struct bootfs_file *bootfs_open_iter(unsigned index) {
     return &files[index];
 }
 
-// BootFSを初期化する。
+//初始化引导文件系统。
 void bootfs_init(void) {
     struct bootfs_header *header = (struct bootfs_header *) __bootfs;
     num_files = header->num_files;

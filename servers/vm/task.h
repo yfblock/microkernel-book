@@ -3,33 +3,33 @@
 #include <libs/common/list.h>
 #include <libs/common/types.h>
 
-// サービス名の最大長
+//服务名称的最大长度
 #define SERVICE_NAME_LEN 64
-// 動的に割り当てられる仮想アドレスの開始アドレス
+//动态分配虚拟地址的起始地址
 #define VALLOC_BASE 0x20000000
-// 動的に割り当てられる仮想アドレスの終了アドレス
+//动态分配的虚拟地址的结束地址
 #define VALLOC_END 0x40000000
 
-// サービス管理構造体。サービス名とタスクIDの対応を保持し、サービスディスカバリに使われる。
+//服务管理架构。它维护服务名称和任务ID之间的对应关系，用于服务发现。
 struct service {
     list_elem_t next;
-    char name[SERVICE_NAME_LEN];  // サービス名
-    task_t task;                  // タスクID
+    char name[SERVICE_NAME_LEN];//服务名称
+    task_t task;//任务ID
 };
 
-// タスク管理構造体
+//任务管理结构
 struct bootfs_file;
 struct task {
-    task_t tid;                          // タスクID
-    task_t pager;                        // ページャタスクID
-    char name[TASK_NAME_LEN];            // タスク名
-    void *file_header;                   // ELFファイルの先頭を指す
-    struct bootfs_file *file;            // BootFS上のELFファイル
-    elf_ehdr_t *ehdr;                    // ELFヘッダ
-    elf_phdr_t *phdrs;                   // プログラムヘッダ
-    uaddr_t valloc_next;                 // 動的に割り当てられる仮想アドレスの次のアドレス
-    char waiting_for[SERVICE_NAME_LEN];  // サービス登録待ちのサービス名
-    bool watch_tasks;                    // タスクの終了を監視するかどうか
+    task_t tid;//任务ID
+    task_t pager;//寻呼机任务ID
+    char name[TASK_NAME_LEN];//任务名称
+    void *file_header;//指向ELF文件的开头
+    struct bootfs_file *file;//BootFS 上的 ELF 文件
+    elf_ehdr_t *ehdr;//ELF 头
+    elf_phdr_t *phdrs;//程序头
+    uaddr_t valloc_next;//下一个动态分配的虚拟地址
+    char waiting_for[SERVICE_NAME_LEN];//等待服务注册的服务名
+    bool watch_tasks;//是否监控任务完成情况
 };
 
 struct task *task_find(task_t tid);
