@@ -5,11 +5,11 @@
 #include <libs/common/string.h>
 #include <libs/user/ipc.h>
 
-// 開いているファイルの一覧。インデックスがファイルディスクリプタとして使われる。
-// 全タスクで共有される。
+//打开的文件列表。索引用作文件描述符。
+//由所有任务共享。
 static struct open_file open_files[OPEN_FILES_MAX];
 
-// ファイルディスクリプタを割り当てる。
+//分配文件描述符。
 static int alloc_fd(void) {
     for (int i = 0; i < OPEN_FILES_MAX; i++) {
         if (!open_files[i].used) {
@@ -21,7 +21,7 @@ static int alloc_fd(void) {
     return 0;
 }
 
-// ファイルディスクリプタからファイル管理構造体を取得する。
+//从文件描述符中获取文件管理结构。
 static struct open_file *lookup_open_file(task_t task, int fd) {
     if (fd < 1 || fd > OPEN_FILES_MAX) {
         return NULL;
@@ -35,12 +35,12 @@ static struct open_file *lookup_open_file(task_t task, int fd) {
     return file;
 }
 
-// ファイル管理構造体を開放する。
+//释放文件管理结构。
 static void free_open_file(struct open_file *file) {
     file->used = false;
 }
 
-// ファイルディスクリプタを開放する。
+//释放文件描述符。
 static void free_fd(task_t task, int fd) {
     struct open_file *file = lookup_open_file(task, fd);
     if (!file) {
@@ -50,7 +50,7 @@ static void free_fd(task_t task, int fd) {
     free_open_file(file);
 }
 
-// タスクが終了したときに呼ばれる。そのタスクが開いているファイルをすべて閉じる。
+//任务完成时调用。关闭该任务打开的所有文件。
 static void do_task_destroyed(task_t task) {
     for (int i = 0; i < OPEN_FILES_MAX; i++) {
         struct open_file *file = &open_files[i];
@@ -60,7 +60,7 @@ static void do_task_destroyed(task_t task) {
     }
 }
 
-// ファイルを開き、ファイルディスクリプタを返す。
+//打开文件并返回文件描述符。
 static int do_open(task_t task, const char *path) {
     struct block *entry_block;
     error_t err = fs_find(path, &entry_block);
@@ -81,7 +81,7 @@ static int do_open(task_t task, const char *path) {
     return fd;
 }
 
-// ファイルを読み書きする。
+//读取和写入文件。
 static int do_readwrite(task_t task, int fd, void *buf, size_t len,
                         bool write) {
     struct open_file *file = lookup_open_file(task, fd);
@@ -107,21 +107,21 @@ static int do_readwrite(task_t task, int fd, void *buf, size_t len,
 }
 
 void main(void) {
-    // 各コンポーネントの初期化
+    //各组件的初始化
     block_init();
     fs_init();
 
-    // VMサーバにタスクの終了を通知するように登録
+    //注册通知Vm服务器任务完成
     struct message m;
     m.type = WATCH_TASKS_MSG;
     ASSERT_OK(ipc_call(VM_SERVER, &m));
 
-    // ファイルシステムサーバとして登録
+    //注册为文件系统服务器
     ASSERT_OK(ipc_register("fs"));
     TRACE("ready");
 
     while (true) {
-        // 変更済みブロックをディスクに書き戻す
+        //将修改后的块写回磁盘
         block_flush_all();
 
         struct message m;

@@ -3,22 +3,22 @@
 #include <libs/common/list.h>
 #include <libs/common/types.h>
 
-// ブロックのサイズ (バイト)
+//块大小（字节）
 #define BLOCK_SIZE 4096
 
-// ブロック番号
+//块号
 typedef uint16_t block_t;
 
-// ブロックキャッシュ
+//块缓存
 //
-// ストレージデバイスの内容を読み書きする際には、まずデバイスからBLOCK_SIZE分のデータを一気に
-// 読み出してブロックキャッシュとして追加し、ファイルシステム実装はメモリ上にあるキャッシュデータ
-// を読み書きする。
+//当读取或写入存储设备的内容时，首先从设备中读取和写入 BLOCK_SIZE 数据。
+//文件系统实现读取内存中的缓存数据并将其添加为块缓存。
+//读和写。
 struct block {
-    block_t index;             // ディスク上のブロック番号
-    list_elem_t cache_next;    // ブロックキャッシュのリストの要素
-    list_elem_t dirty_next;    // 変更済みブロックキャッシュのリストの要素
-    uint8_t data[BLOCK_SIZE];  // ブロックの内容
+    block_t index;//磁盘上的块号
+    list_elem_t cache_next;//块缓存列表的元素
+    list_elem_t dirty_next;//修改块缓存列表的元素
+    uint8_t data[BLOCK_SIZE];//块内容
 };
 
 error_t block_read(block_t index, struct block **block);

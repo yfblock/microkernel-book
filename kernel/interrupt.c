@@ -4,12 +4,12 @@
 #include "task.h"
 #include <libs/common/print.h>
 
-// 割り込み通知を受け付けるタスクの一覧。
+//接受中断通知的任务列表。
 static struct task *irq_listeners[IRQ_MAX];
-// 起動してからの経過時間。単位はタイマー割り込みの周期 (TICK_HZ) に依存する。
+//自启动以来经过的时间。单位取决于定时器中断周期（TICK_HZ）。
 unsigned uptime_ticks = 0;
 
-// 割り込み通知を受け付けるようにする。
+//允许接受中断通知。
 error_t irq_listen(struct task *task, unsigned irq) {
     if (irq >= IRQ_MAX) {
         return ERR_INVALID_ARG;
@@ -28,7 +28,7 @@ error_t irq_listen(struct task *task, unsigned irq) {
     return OK;
 }
 
-// 割り込み通知を受け付けないようにする。
+//防止接受中断通知。
 error_t irq_unlisten(struct task *task, unsigned irq) {
     if (irq >= IRQ_MAX) {
         return ERR_INVALID_ARG;
@@ -47,14 +47,14 @@ error_t irq_unlisten(struct task *task, unsigned irq) {
     return OK;
 }
 
-// ハードウェア割り込みハンドラ (タイマー割り込み以外)
+//硬件中断处理程序（定时器中断除外）
 void handle_interrupt(unsigned irq) {
     if (irq >= IRQ_MAX) {
         WARN("invalid IRQ: %u", irq);
         return;
     }
 
-    // 割り込みを受け付けるタスクを取得し、通知を送る。
+    //获取接受中断并发送通知的任务。
     struct task *task = irq_listeners[irq];
     if (!task) {
         WARN("unhandled IRQ %u", irq);
@@ -64,25 +64,25 @@ void handle_interrupt(unsigned irq) {
     notify(task, NOTIFY_IRQ);
 }
 
-// タイマー割り込みハンドラ
+//定时器中断处理程序
 void handle_timer_interrupt(unsigned ticks) {
-    // 起動してからの経過時間を更新
+    //更新自启动以来经过的时间
     uptime_ticks += ticks;
 
     if (CPUVAR->id == 0) {
-        // 各タスクのタイマーを更新する
+        //更新每个任务的计时器
         LIST_FOR_EACH (task, &active_tasks, struct task, next) {
             if (task->timeout > 0) {
                 task->timeout -= MIN(task->timeout, ticks);
                 if (!task->timeout) {
-                    // タイムアウトしたのでタスクに通知する
+                    //通知任务已超时
                     notify(task, NOTIFY_TIMER);
                 }
             }
         }
     }
 
-    // 実行中タスクの残り実行可能時間を更新し、ゼロになったらタスク切り替えを行う
+    //更新正在运行的任务的剩余可运行时间，当剩余可运行时间为零时切换任务。
     struct task *current = CURRENT_TASK;
     DEBUG_ASSERT(current->quantum >= 0 || current == IDLE_TASK);
     current->quantum -= MIN(ticks, current->quantum);

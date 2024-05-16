@@ -4,29 +4,28 @@
 #include <libs/common/string.h>
 #include <libs/user/ipc.h>
 #include <libs/user/malloc.h>
-#include <servers/virtio_blk/virtio_blk.h>  // SECTOR_SIZE
-
-// ブロックデバイスドライバサーバのタスクID。
+#include <servers/virtio_blk/virtio_blk.h>  //扇区大小
+//块设备驱动程序服务器任务 ID。
 static task_t blk_server;
-// キャッシュされたブロックのリスト。
+//缓存块的列表。
 static list_t cached_blocks = LIST_INIT(cached_blocks);
-// 変更済みブロックのリスト。ディスクに書き戻す必要がある。
+//已修改块的列表。必须写回磁盘。
 static list_t dirty_blocks = LIST_INIT(dirty_blocks);
 
-// ブロック番号をセクタ番号に変換する。
+//将块号转换为扇区号。
 static uint64_t block_to_sector(block_t index) {
     return (index * BLOCK_SIZE) / SECTOR_SIZE;
 }
 
-// ブロックが変更済みかどうかを返す。
+//返回块是否已被修改。
 static bool block_is_dirty(struct block *block) {
     return list_is_linked(&block->dirty_next);
 }
 
-// ブロックをディスクに書き込む。
+//将块写入磁盘。
 static void block_write(struct block *block) {
     unsigned sector_base = block_to_sector(block->index);
-    // 各セクタごとに書き込む
+    //分别写入每个扇区
     for (int offset = 0; offset < BLOCK_SIZE; offset += SECTOR_SIZE) {
         struct message m;
         m.type = BLK_WRITE_MSG;
@@ -40,14 +39,14 @@ static void block_write(struct block *block) {
     }
 }
 
-// ブロックをブロックキャッシュに読み込む。
+//将块读入块缓存。
 error_t block_read(block_t index, struct block **block) {
     if (index == 0xffff) {
         OOPS("invalid block index: %x", index);
         return ERR_INVALID_ARG;
     }
 
-    // 既にキャッシュされていれば、それを返す。
+    //如果已经缓存，则返回。
     LIST_FOR_EACH (b, &cached_blocks, struct block, cache_next) {
         if (b->index == index) {
             *block = b;
@@ -55,11 +54,11 @@ error_t block_read(block_t index, struct block **block) {
         }
     }
 
-    // ブロックキャッシュのメモリ領域を確保して、各セクタを読み込む。
+    //分配块高速缓冲存储器区域并读取每个扇区。
     TRACE("block %d is not in cache, reading from disk", index);
     struct block *new_block = malloc(sizeof(struct block));
     for (int offset = 0; offset < BLOCK_SIZE; offset += SECTOR_SIZE) {
-        // デバイスドライバサーバに対して、セクタ読み込み要求を送る。
+        //向设备驱动服务器发送扇区读请求。
         struct message m;
         m.type = BLK_READ_MSG;
         m.blk_read.sector = block_to_sector(index) + (offset / SECTOR_SIZE);
@@ -86,11 +85,11 @@ error_t block_read(block_t index, struct block **block) {
             return ERR_UNEXPECTED;
         }
 
-        // ブロックキャッシュに読み込んだディスクデータをコピーする。
+        //将读取到的磁盘数据复制到块缓存中。
         memcpy(&new_block->data[offset], m.blk_read_reply.data, SECTOR_SIZE);
     }
 
-    // ブロックキャッシュをリストに追加し、そのポインタを返す。
+    //将块缓存添加到列表中并返回其指针。
     new_block->index = index;
     list_elem_init(&new_block->cache_next);
     list_elem_init(&new_block->dirty_next);
@@ -99,14 +98,14 @@ error_t block_read(block_t index, struct block **block) {
     return OK;
 }
 
-// ブロックを変更済みにする。
+//将块标记为已修改。
 void block_mark_as_dirty(struct block *block) {
     if (!block_is_dirty(block)) {
         list_push_back(&dirty_blocks, &block->dirty_next);
     }
 }
 
-// 変更済みブロックをすべてディスクに書き込む。
+//将所有修改的块写入磁盘。
 void block_flush_all(void) {
     LIST_FOR_EACH (b, &dirty_blocks, struct block, dirty_next) {
         block_write(b);
@@ -114,8 +113,8 @@ void block_flush_all(void) {
     }
 }
 
-// ブロックキャッシュレイヤの初期化。
+//块缓存层的初始化。
 void block_init(void) {
-    // デバイスドライバサーバのタスクIDを取得する。
+    //获取设备驱动服务器的任务ID。
     blk_server = ipc_lookup("blk_device");
 }

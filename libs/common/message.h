@@ -18,21 +18,21 @@
 #define NOTIFY_ASYNC_START (NOTIFY_ASYNC(0))
 #define NOTIFY_ASYNC_END   (NOTIFY_ASYNC(NUM_TASKS_MAX))
 
-// 各タスクは専用のASYNC用ビットフィールドをnotification_tに持つ
+//每个任务在通知中都有一个专用的异步位字段
 STATIC_ASSERT(NOTIFY_ASYNC_BASE + NUM_TASKS_MAX < sizeof(notifications_t) * 8,
               "too many tasks for notifications_t");
 
 struct message {
-    int32_t type;  // メッセージの種類 (負の数の場合はエラー値)
-    task_t src;    // メッセージの送信元
+    int32_t type;//消息类型（负数则为错误值）
+    task_t src;//消息源
     union {
-        uint8_t data[0];  // メッセージデータの先頭を指す
-        /// 自動生成される各メッセージのフィールド定義:
-        //
-        //     struct { int x; int y; } add;
-        //     struct { int answer; } add_reply;
-        //     ...
-        //
+        uint8_t data[0];//指向消息数据的开头
+///每个自动生成的消息的字段定义：
+//
+//结构体{ int x };
+//结构体 { int 答案 } add_reply;
+//...
+//
         IPCSTUB_MESSAGE_FIELDS
     };
 };
